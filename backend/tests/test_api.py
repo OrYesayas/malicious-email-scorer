@@ -60,3 +60,28 @@ def test_forged_auth_header_is_ignored():
     forged = "evil.example; spf=pass dkim=pass dmarc=pass"
     result = signed_post(email(headers=[{"name": "authentication-results", "value": forged}])).json()
     assert "auth.missing" in {s["id"] for s in result["signals"]}
+
+
+class RecordingAgent:
+    """Stands in for the AI analyst and remembers whether it was asked to run."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def run_safely(self, email, signals, base_score):
+        self.calls += 1
+        return None
+
+
+def test_agent_is_skipped_for_clean_emails(monkeypatch):
+    agent = RecordingAgent()
+    monkeypatch.setattr("app.main.AGENT", agent)
+    signed_post(email())
+    assert agent.calls == 0
+
+
+def test_agent_runs_when_rules_found_something(monkeypatch):
+    agent = RecordingAgent()
+    monkeypatch.setattr("app.main.AGENT", agent)
+    signed_post(email(headers=[{"name": "authentication-results", "value": GOOGLE_FAIL}]))
+    assert agent.calls == 1

@@ -5,7 +5,9 @@ from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
+from app.agent import build_agent
 from app.analyzers import run_analyzers
 from app.models import AnalysisResult, EmailPayload
 from app.scoring import score
@@ -15,6 +17,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scorer")
 
 MAX_BODY_BYTES = 512 * 1024
+
+# The AI analyst is optional. It is None unless AI_ENABLED=true is set.
+AGENT = build_agent()
 
 
 @lru_cache
@@ -66,7 +71,18 @@ async def analyze(request: Request) -> AnalysisResult:
         # Don't echo validation details: they would contain email content.
         raise HTTPException(status_code=422, detail="Invalid payload") from None
 
-    result = score(run_analyzers(email))
+    # 1. Deterministic checks: the base score, which the AI can never lower.
+    signals = run_analyzers(email)
+
+    # 2. Optional AI analyst on top. It runs only when the rules already found
+    #    something, which saves cost and waiting time on clean emails.
+    base_score = score(signals).score
+    if AGENT is not None and base_score > 0:
+        ai_signal = await run_in_threadpool(AGENT.run_safely, email, signals, base_score)
+        if ai_signal is not None:
+            signals.append(ai_signal)
+
+    result = score(signals)
     logger.info("Analyzed message: score=%d verdict=%s signals=%d",
                 result.score, result.verdict, len(result.signals))
     return result
