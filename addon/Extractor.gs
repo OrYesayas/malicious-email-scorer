@@ -1,6 +1,6 @@
 /**
  * Collects only the parts of the email the backend needs, with hard size limits.
- * Attachments are never sent: only their name, type, size and SHA-256 hash.
+ * Attachments are not read or sent at all.
  */
 const LIMITS = {
   BODY_CHARS: 50000,
@@ -9,7 +9,6 @@ const LIMITS = {
   MAX_LINKS: 100,
   LINK_CHARS: 2048,
   LINK_TEXT_CHARS: 300,
-  MAX_ATTACHMENTS: 20,
 };
 
 const WANTED_HEADERS = [
@@ -24,7 +23,6 @@ function extractEmail(message) {
     subject: (message.getSubject() || '').slice(0, 1000),
     body_text: (message.getPlainBody() || '').slice(0, LIMITS.BODY_CHARS),
     links: extractLinks(message.getBody() || ''),
-    attachments: extractAttachments(message),
   };
 }
 
@@ -67,18 +65,4 @@ function extractLinks(html) {
 
 function stripTags(s) {
   return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-}
-
-function extractAttachments(message) {
-  return message.getAttachments({ includeInlineImages: false })
-    .slice(0, LIMITS.MAX_ATTACHMENTS)
-    .map(function (a) {
-      const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, a.getBytes());
-      return {
-        filename: (a.getName() || '').slice(0, 255),
-        content_type: (a.getContentType() || '').slice(0, 255),
-        size: a.getSize(),
-        sha256: toHex(digest),
-      };
-    });
 }

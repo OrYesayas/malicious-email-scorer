@@ -2,8 +2,9 @@
 
 The model decides what to investigate; the code decides what it is worth.
 The agent may look up domain registration dates with one read-only tool,
-then explain the result and recommend an action. Points are added only by
-a fixed rule in this file (a very new domain), never by the model's judgment.
+then explain the result and recommend an action. Points are added by fixed
+rules in this file: a very new domain adds points, and a cautious
+recommendation can raise the verdict to Suspicious, but never higher.
 If the agent fails in any way, the deterministic result is returned unchanged.
 """
 import json
@@ -20,6 +21,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.analyzers.links import site_actual
 from app.analyzers.sender import domain_of
 from app.models import EmailPayload, Signal
+from app.scoring import SUSPICIOUS_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ LLM_TIMEOUT_SECONDS = 8.0
 RDAP_TIMEOUT_SECONDS = 4.0
 NEW_DOMAIN_DAYS = 30     # a domain younger than this is strong evidence of phishing
 NEW_DOMAIN_POINTS = 20   # added by code when the agent's lookup finds such a domain
+CAUTIOUS_ACTIONS = {"do_not_click", "report_to_security"}
 
 METADATA_TOKEN_URL = (
     "http://metadata.google.internal/computeMetadata/v1/"
@@ -113,6 +116,14 @@ def email_domains(email: EmailPayload, limit: int = 5) -> list[str]:
     return domains[:limit]
 
 
+def describe_age(days: int) -> str:
+    """A domain age in words a user understands at a glance."""
+    if days < 365:
+        return f"{days} days ago"
+    years = round(days / 365)
+    return f"about {years} year{'s' if years != 1 else ''} ago"
+
+
 # --- The agent ------------------------------------------------------------
 
 class AnalystAgent:
@@ -162,8 +173,8 @@ class AnalystAgent:
 
             if not calls:  # The model has given its final answer.
                 text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
-                points = NEW_DOMAIN_POINTS if found_new_domain else 0
-                return self._to_signal(text, checked, points)
+                evidence_points = NEW_DOMAIN_POINTS if found_new_domain else 0
+                return self._to_signal(text, checked, evidence_points, base_score)
 
             contents.append(content)  # The model's turn is sent back as-is.
             replies = []
@@ -180,7 +191,7 @@ class AnalystAgent:
                     result = self.lookup(domain)
                     age = result.get("age_days")
                     if isinstance(age, int):
-                        checked.append(f"{domain} registered {age} days ago")
+                        checked.append(f"{domain} was registered {describe_age(age)}")
                         found_new_domain = found_new_domain or age < NEW_DOMAIN_DAYS
                     else:
                         checked.append(f"{domain}: {result.get('error', 'no data')}")
@@ -191,16 +202,27 @@ class AnalystAgent:
         return None
 
     @staticmethod
-    def _to_signal(text: str, checked: list[str], points: int) -> Signal | None:
+    def _to_signal(text: str, checked: list[str], evidence_points: int, base_score: int) -> Signal | None:
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
         try:
             verdict = AgentVerdict.model_validate_json(text)
         except ValidationError:
             logger.warning("AI analyst returned an answer in the wrong shape; ignoring it")
             return None
+
+        # The one way the agent's opinion affects the result, and only in the safe direction:
+        # if it recommends caution, the verdict is raised to at least Suspicious, never higher.
+        # An attacker who manipulates the agent can cause a false alarm, but never hide a threat.
+        caution_points = 0
+        if verdict.recommended_action in CAUTIOUS_ACTIONS:
+            caution_points = max(0, SUSPICIOUS_THRESHOLD - base_score)
+        points = max(evidence_points, caution_points)
+
         description = f"{verdict.assessment} Recommended: {ACTION_TEXT[verdict.recommended_action]}."
         if checked:
-            description += " Checked: " + "; ".join(checked) + "."
+            description += " Domain age check: " + "; ".join(checked) + "."
+        if caution_points > evidence_points:
+            description += " The verdict was raised to Suspicious because of this recommendation."
         return Signal(
             id="ai.analyst", category="AI analyst",
             points=points, description=description[:500],
@@ -209,16 +231,44 @@ class AnalystAgent:
 
 # --- Real connections (used only in the cloud) ------------------------------
 
+IANA_RDAP_BOOTSTRAP = "https://data.iana.org/rdap/dns.json"
+USER_AGENT = "MaliciousEmailScorer/1.0 (Gmail add-on security check)"
+_REGISTRY_LIST: list = []   # loaded once from IANA, then kept in memory
+
+
+def rdap_base_url(domain: str, http: httpx.Client) -> str:
+    """Finds the registry that manages the domain's ending (for example .com),
+    using the official list published by IANA. The list is loaded once and kept in memory."""
+    if not _REGISTRY_LIST:
+        resp = http.get(IANA_RDAP_BOOTSTRAP, timeout=RDAP_TIMEOUT_SECONDS,
+                        headers={"User-Agent": USER_AGENT})
+        resp.raise_for_status()
+        _REGISTRY_LIST.extend(resp.json().get("services", []))
+    tld = domain.rsplit(".", 1)[-1]
+    for service in _REGISTRY_LIST:
+        if isinstance(service, list) and len(service) == 2 and tld in service[0] and service[1]:
+            return str(service[1][0]).rstrip("/") + "/"
+    return ""
+
+
 def rdap_domain_age(domain: str, http: httpx.Client) -> dict:
-    """Looks a domain up in the public RDAP registry. The reply is untrusted:
-    only the registration date is read from it."""
+    """Looks a domain up directly at its registry. The registry's reply is untrusted:
+    only the registration date is read from it. Every error says exactly what happened."""
     try:
-        resp = http.get(f"https://rdap.org/domain/{domain}",
-                        timeout=RDAP_TIMEOUT_SECONDS, follow_redirects=True)
+        base = rdap_base_url(domain, http)
+    except (httpx.HTTPError, ValueError):
+        return {"domain": domain, "error": "could not load the list of registries"}
+    if not base:
+        return {"domain": domain, "error": "the registry for this domain ending does not offer lookups"}
+    try:
+        resp = http.get(f"{base}domain/{domain}", timeout=RDAP_TIMEOUT_SECONDS,
+                        follow_redirects=True, headers={"User-Agent": USER_AGENT})
     except httpx.HTTPError:
-        return {"domain": domain, "error": "registry lookup failed"}
+        return {"domain": domain, "error": "the registry did not answer"}
+    if resp.status_code == 404:
+        return {"domain": domain, "error": "this domain is not registered"}
     if resp.status_code != 200:
-        return {"domain": domain, "error": "not found in the registry"}
+        return {"domain": domain, "error": f"registry lookup failed (HTTP {resp.status_code})"}
     try:
         events = resp.json().get("events", [])
     except ValueError:
@@ -233,7 +283,7 @@ def rdap_domain_age(domain: str, http: httpx.Client) -> dict:
                 registered = registered.replace(tzinfo=timezone.utc)
             age = (datetime.now(timezone.utc) - registered).days
             return {"domain": domain, "registered": registered.date().isoformat(), "age_days": age}
-    return {"domain": domain, "error": "registration date not published"}
+    return {"domain": domain, "error": "the registry does not publish a registration date"}
 
 
 def build_agent() -> AnalystAgent | None:

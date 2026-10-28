@@ -20,14 +20,6 @@ class Link(BaseModel):
     text: str = Field(default="", max_length=300)
 
 
-class Attachment(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    filename: str = Field(max_length=255)
-    content_type: str = Field(default="", max_length=255)
-    size: int = Field(ge=0)
-    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-
-
 class EmailPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
     headers: list[Header] = Field(default_factory=list, max_length=50)
@@ -36,7 +28,6 @@ class EmailPayload(BaseModel):
     subject: str = Field(default="", max_length=1000)
     body_text: str = Field(default="", max_length=50_000)
     links: list[Link] = Field(default_factory=list, max_length=100)
-    attachments: list[Attachment] = Field(default_factory=list, max_length=20)
 
     def headers_named(self, name: str) -> list[str]:
         """Return header values in their original (top-to-bottom) order."""

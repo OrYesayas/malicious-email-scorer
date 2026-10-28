@@ -92,3 +92,30 @@ def test_a_broken_model_does_not_break_the_analysis():
 
     agent = AnalystAgent(llm=broken_llm, lookup=lambda d: {})
     assert agent.run_safely(EMAIL, [LINK_SIGNAL], base_score=25) is None
+
+
+CAUTION = final_answer(assessment="Claims to be a bank but uses a free address.", recommended_action="do_not_click")
+
+
+def test_cautious_advice_raises_a_safe_email_to_suspicious():
+    agent = AnalystAgent(llm=fake_llm(CAUTION), lookup=lambda d: {})
+    signal = agent.run(EMAIL, [LINK_SIGNAL], base_score=10)
+    assert signal.points == 15          # 10 + 15 = 25, exactly the Suspicious threshold
+    assert "raised to Suspicious" in signal.description
+
+
+def test_cautious_advice_never_goes_above_suspicious():
+    agent = AnalystAgent(llm=fake_llm(CAUTION), lookup=lambda d: {})
+    assert agent.run(EMAIL, [LINK_SIGNAL], base_score=30).points == 0
+
+
+def test_mild_advice_does_not_change_the_verdict():
+    mild = final_answer(assessment="Probably fine.", recommended_action="be_careful")
+    agent = AnalystAgent(llm=fake_llm(mild), lookup=lambda d: {})
+    assert agent.run(EMAIL, [LINK_SIGNAL], base_score=10).points == 0
+
+
+def test_domain_age_is_easy_to_read():
+    from app.agent import describe_age
+    assert describe_age(3) == "3 days ago"
+    assert describe_age(11399) == "about 31 years ago"
