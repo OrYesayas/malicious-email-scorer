@@ -1,4 +1,4 @@
-# Malicious Email Scorer — Gmail Add-on
+# Malicious Email Scorer - Gmail Add-on
 
 Malicious Email Scorer is a Gmail add-on that checks the email you open and tells you how risky it looks. It shows a score from 0 to 100, a verdict (Safe, Suspicious or Likely malicious), and a clear list of the reasons behind the result.
 
