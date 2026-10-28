@@ -2,6 +2,7 @@ import logging
 
 from app.analyzers.authentication import AuthenticationAnalyzer
 from app.analyzers.base import Analyzer
+from app.analyzers.links import LinksAnalyzer
 from app.analyzers.sender import SenderAnalyzer
 from app.models import EmailPayload, Signal
 
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 ANALYZERS: list[Analyzer] = [
     AuthenticationAnalyzer(),
     SenderAnalyzer(),
+    LinksAnalyzer(),
 ]
 
 
