@@ -11,6 +11,7 @@ MAX_CLOCK_SKEW_SECONDS = 300
 
 
 def verify_signature(body: bytes, timestamp: str, signature: str, secret: bytes) -> bool:
+    """Checks that the request came from our add-on, was not changed, and is not too old."""
     try:
         sent_at = int(timestamp)
     except ValueError:

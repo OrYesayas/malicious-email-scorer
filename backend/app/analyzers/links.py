@@ -44,9 +44,12 @@ def site_actual(href: str) -> str:
 
 
 class LinksAnalyzer:
+    """Looks for links that show one website but lead to another."""
+
     name = "links"
 
     def analyze(self, email: EmailPayload) -> list[Signal]:
+        """Compares the website each link shows with the website it really leads to."""
         signals: list[Signal] = []
         seen: set[tuple[str, str]] = set()
         for link in email.links:

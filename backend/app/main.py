@@ -24,6 +24,7 @@ AGENT = build_agent()
 
 @lru_cache
 def get_secret() -> bytes:
+    """Reads the shared secret from the environment once, and refuses a weak or missing one."""
     secret = os.environ.get("HMAC_SECRET", "")
     if len(secret) < 32:
         raise RuntimeError("HMAC_SECRET must be set and at least 32 characters long")
@@ -32,6 +33,7 @@ def get_secret() -> bytes:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """Runs when the server starts: stops it right away if it is not set up correctly."""
     get_secret()  # Fail fast on startup if the service is misconfigured.
     yield
 
@@ -45,11 +47,13 @@ app = FastAPI(title="Malicious Email Scorer", lifespan=lifespan,
 # so the health check uses /health instead.
 @app.get("/health")
 def health() -> dict:
+    """Tells Cloud Run that the server is alive. Open to everyone, because it reveals nothing."""
     return {"status": "ok"}
 
 
 @app.post("/analyze", response_model=AnalysisResult)
 async def analyze(request: Request) -> AnalysisResult:
+    """Checks the request step by step (size, signature, format), then scores the email."""
     declared = request.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         raise HTTPException(status_code=413, detail="Payload too large")

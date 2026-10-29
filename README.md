@@ -25,7 +25,7 @@ flowchart LR
     S[(Secret Manager)] -. secret .-> C
 ```
 
-The add-on is kept small on purpose: it collects the email details, sends them to the server, and shows the result. All checks run on the server, which is written in Python, covered by 32 automated tests, and the only place where secrets are kept.
+The add-on is kept small on purpose: it collects the email details, sends them to the server, and shows the result. All checks run on the server, which is written in Python, covered by 33 automated tests, and the only place where secrets are kept.
 
 The panel shows the verdict, the score, the sender split into **display name** and **real address** (so impersonation is easy to spot), and every finding with its points and a short explanation.
 

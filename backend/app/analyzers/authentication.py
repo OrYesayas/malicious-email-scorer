@@ -13,6 +13,7 @@ _RESULT_PATTERNS = {m: re.compile(rf"\b{m}=([a-z]+)", re.IGNORECASE) for m in _M
 
 
 def parse_auth_results(value: str) -> dict[str, str]:
+    """Reads the SPF, DKIM and DMARC results (pass, fail, ...) from one header."""
     results = {}
     for mechanism, pattern in _RESULT_PATTERNS.items():
         match = pattern.search(value)
@@ -22,6 +23,7 @@ def parse_auth_results(value: str) -> dict[str, str]:
 
 
 def trusted_auth_results(email: EmailPayload) -> dict[str, str] | None:
+    """Returns the results from the header Gmail added, ignoring any header the sender added."""
     for value in email.headers_named("authentication-results"):
         if value.strip().lower().startswith(TRUSTED_AUTHSERV_ID + ";"):
             return parse_auth_results(value)
@@ -29,9 +31,12 @@ def trusted_auth_results(email: EmailPayload) -> dict[str, str] | None:
 
 
 class AuthenticationAnalyzer:
+    """Checks whether the sender's domain really allowed this email to be sent."""
+
     name = "authentication"
 
     def analyze(self, email: EmailPayload) -> list[Signal]:
+        """Adds points for each failed check (SPF, DKIM, DMARC), or if Gmail's result is missing."""
         results = trusted_auth_results(email)
         if results is None:
             return [Signal(

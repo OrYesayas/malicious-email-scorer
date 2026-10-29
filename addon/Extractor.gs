@@ -15,6 +15,7 @@ const WANTED_HEADERS = [
   'authentication-results', 'received-spf', 'from', 'reply-to', 'return-path', 'message-id',
 ];
 
+/** Collects the details the server needs from the open email, each with a size limit. */
 function extractEmail(message) {
   return {
     headers: parseHeaders(message.getRawContent()),
@@ -63,6 +64,7 @@ function extractLinks(html) {
   return links;
 }
 
+/** Removes HTML tags from a link's text, leaving only the words the user sees. */
 function stripTags(s) {
   return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 }

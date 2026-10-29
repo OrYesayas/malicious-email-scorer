@@ -8,4 +8,6 @@ class Analyzer(Protocol):
 
     name: str
 
-    def analyze(self, email: EmailPayload) -> list[Signal]: ...
+    def analyze(self, email: EmailPayload) -> list[Signal]:
+        """Returns the findings of this check. An empty list means nothing was found."""
+        ...

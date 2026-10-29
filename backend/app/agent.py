@@ -127,7 +127,10 @@ def describe_age(days: int) -> str:
 # --- The agent ------------------------------------------------------------
 
 class AnalystAgent:
+    """The AI analyst: decides what to check, explains the result, and recommends an action."""
+
     def __init__(self, llm: Callable[[list], dict], lookup: Callable[[str], dict]):
+        """Receives the way to talk to the model and the domain-age tool, so tests can use fakes."""
         self.llm = llm          # sends the conversation to the model, returns its raw response
         self.lookup = lookup    # the read-only domain-age tool
 
@@ -140,6 +143,7 @@ class AnalystAgent:
             return None
 
     def run(self, email: EmailPayload, signals: list[Signal], base_score: int) -> Signal | None:
+        """Talks with the model, runs the tool when it asks, and turns its final answer into a finding."""
         allowed = email_domains(email)
         data = {
             "subject": email.subject[:200],
@@ -203,6 +207,7 @@ class AnalystAgent:
 
     @staticmethod
     def _to_signal(text: str, checked: list[str], evidence_points: int, base_score: int) -> Signal | None:
+        """Checks the model's answer and decides the points by fixed rules, never by the model."""
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip())
         try:
             verdict = AgentVerdict.model_validate_json(text)
@@ -261,8 +266,9 @@ def rdap_domain_age(domain: str, http: httpx.Client) -> dict:
     if not base:
         return {"domain": domain, "error": "the registry for this domain ending does not offer lookups"}
     try:
+        # Redirects are not followed: the request may go only to the registry from IANA's list.
         resp = http.get(f"{base}domain/{domain}", timeout=RDAP_TIMEOUT_SECONDS,
-                        follow_redirects=True, headers={"User-Agent": USER_AGENT})
+                        follow_redirects=False, headers={"User-Agent": USER_AGENT})
     except httpx.HTTPError:
         return {"domain": domain, "error": "the registry did not answer"}
     if resp.status_code == 404:
@@ -305,6 +311,7 @@ def build_agent() -> AnalystAgent | None:
            f"/publishers/google/models/{model}:generateContent")
 
     def llm(contents: list) -> dict:
+        """Sends the conversation to Gemini, using the server's own Google Cloud identity."""
         token = http.get(METADATA_TOKEN_URL, headers={"Metadata-Flavor": "Google"},
                          timeout=2.0).json()["access_token"]
         resp = http.post(url, headers={"Authorization": f"Bearer {token}"}, timeout=LLM_TIMEOUT_SECONDS, json={

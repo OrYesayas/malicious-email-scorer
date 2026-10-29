@@ -16,6 +16,7 @@ ANALYZERS: list[Analyzer] = [
 
 
 def run_analyzers(email: EmailPayload) -> list[Signal]:
+    """Runs every fixed rule on the email. If one rule crashes, the others still run."""
     signals: list[Signal] = []
     for analyzer in ANALYZERS:
         try:

@@ -8,6 +8,7 @@ const VERDICT_LABELS = {
   MALICIOUS: '🛑 Likely malicious',
 };
 
+/** Builds the panel: verdict and score, the sender in two parts, and the list of findings. */
 function buildResultCard(result, sender) {
   const header = CardService.newCardHeader()
     .setTitle(VERDICT_LABELS[result.verdict])
@@ -46,6 +47,7 @@ function buildResultCard(result, sender) {
     .build();
 }
 
+/** Shows a general error message, without revealing any details. */
 function buildErrorCard() {
   return CardService.newCardBuilder()
     .setHeader(CardService.newCardHeader().setTitle('Could not analyze this email'))

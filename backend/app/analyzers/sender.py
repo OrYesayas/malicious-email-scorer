@@ -8,6 +8,7 @@ _ADDRESS_IN_TEXT = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-
 
 
 def domain_of(address: str) -> str:
+    """Returns the domain of an email address, such as paypal.com, in lower case."""
     _, addr = parseaddr(address)
     return addr.rsplit("@", 1)[1].lower() if "@" in addr else ""
 
@@ -22,9 +23,12 @@ def same_organization(a: str, b: str) -> bool:
 
 
 class SenderAnalyzer:
+    """Looks for tricks with the sender's identity."""
+
     name = "sender"
 
     def analyze(self, email: EmailPayload) -> list[Signal]:
+        """Flags a display name that shows another address, and replies that go elsewhere."""
         signals = []
         display_name, _ = parseaddr(email.sender)
         from_domain = domain_of(email.sender)

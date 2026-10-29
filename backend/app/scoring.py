@@ -12,6 +12,7 @@ _SUMMARIES = {
 
 
 def score(signals: list[Signal]) -> AnalysisResult:
+    """Adds up the points of all findings and turns the total into a verdict."""
     total = min(100, sum(s.points for s in signals))
     if total >= MALICIOUS_THRESHOLD:
         verdict = "MALICIOUS"

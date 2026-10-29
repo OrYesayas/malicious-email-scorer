@@ -3,6 +3,7 @@
  * "<timestamp>.<body>", and the response is validated before use,
  * because the backend's answer is also treated as untrusted input.
  */
+/** Signs the email details with the shared secret, sends them to the server, and returns the result. */
 function analyzeEmail(payload) {
   const props = PropertiesService.getScriptProperties();
   const baseUrl = props.getProperty('BACKEND_URL');
@@ -27,6 +28,7 @@ function analyzeEmail(payload) {
   return validateResult(JSON.parse(response.getContentText()));
 }
 
+/** Checks that the server's answer has the expected shape and limits its size before it is used. */
 function validateResult(r) {
   if (!r || typeof r.score !== 'number' || r.score < 0 || r.score > 100 ||
       !Object.prototype.hasOwnProperty.call(VERDICT_LABELS, r.verdict) ||
@@ -47,6 +49,7 @@ function validateResult(r) {
   };
 }
 
+/** Turns bytes into a hex string, the format the server expects for signatures. */
 function toHex(bytes) {
   return bytes.map(function (b) {
     return ('0' + (b & 0xff).toString(16)).slice(-2);

@@ -42,3 +42,16 @@ def test_blocked_lookup_is_not_reported_as_not_found():
 
 def test_domain_ending_without_a_registry():
     assert "does not offer lookups" in lookup("example.zz", fake_http(200))["error"]
+
+
+def test_redirects_from_the_registry_are_not_followed():
+    # The server may contact only the registry from IANA's list, never an address it is sent to.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "data.iana.org":
+            return httpx.Response(200, json=BOOTSTRAP)
+        if request.url.host == "rdap.example-registry.com":
+            return httpx.Response(302, headers={"Location": "http://169.254.169.254/"})
+        raise AssertionError("the redirect was followed")
+
+    result = lookup("example.com", httpx.Client(transport=httpx.MockTransport(handler)))
+    assert result["error"] == "registry lookup failed (HTTP 302)"
